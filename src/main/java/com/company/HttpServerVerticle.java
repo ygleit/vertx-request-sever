@@ -1,6 +1,7 @@
 package com.company;
 
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -33,34 +34,41 @@ public class HttpServerVerticle extends AbstractVerticle {
                 .handler(validationHandler)
                 .handler(this::handleUrlTesterRoute)
                 .failureHandler(this::validationFailuresHandler);
-        router.errorHandler(400 ,this::errorHandler);
+        router.errorHandler(404, this::resourceNotFoundHandler);
         this.server.requestHandler(this.router).listen(80);
     }
 
     private void handleUrlTesterRoute(RoutingContext context) {
         RequestParamsModel parameters = this.buildRequestModel(context.queryParams());
-        this.client.get(parameters.getUrl()).send(request -> {
-            if (request.succeeded()) {
-                HttpResponse<Buffer> response = request.result();
-                if (response.statusCode() == 200) {
-                    context.response().end("status code: 200, content length: " + response.bodyAsString().length() + ", timeout: none, time took: ");
-                } else {
-                    context.response().end("status code: " + response.statusCode() + ", content length:  none, timeout: yes, time took: " + parameters.getTimeout());
-                }
-            }
-        });
+        vertx.deployVerticle(new HttpClientVerticle(parameters), new DeploymentOptions().setInstances(parameters.getRequests()));
+
+//        this.client.get(parameters.getUrl(), "").send(request -> {
+//            if (request.succeeded()) {
+//                HttpResponse<Buffer> response = request.result();
+//                if (response.statusCode() == 200) {
+//                    context.response().end("status code: 200, content length: " + response.bodyAsString().length() + ", timeout: none, time took: ");
+//                } else {
+//                    context.response().end("status code: none, content length:  none, timeout: yes, time took: " + parameters.getTimeout());
+//                }
+//            }
+//        });
     }
 
     private void validationFailuresHandler(RoutingContext context) {
         Throwable failure = context.failure();
-        if (failure instanceof  ValidationException) {
-            var validationErrorMessage = failure.getMessage();
+        if (failure instanceof ValidationException) {
+            context.response()
+                    .setStatusCode(400)
+                    .end(String.format("the parameter: %s failed in validation because of %s", ((ValidationException) failure).parameterName(), failure.getMessage()));
+            System.out.println("hello");
+        } else {
+            // TODO set to handle exceptions from the handlers functions
         }
     }
 
-    private void errorHandler(RoutingContext context){
-
-
+    private void resourceNotFoundHandler(RoutingContext context) {
+        context.response().setStatusCode(400).end("resource not found, bad request");
+        System.out.println("hello");
     }
 
     @Override
