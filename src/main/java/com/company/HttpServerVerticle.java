@@ -1,11 +1,16 @@
 package com.company;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.eventbus.MessageConsumer;
 import io.vertx.core.http.HttpServer;
+import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.api.validation.HTTPRequestValidationHandler;
@@ -20,6 +25,9 @@ public class HttpServerVerticle extends AbstractVerticle {
     private HttpServer server;
     private Router router;
     private WebClient client;
+    private final static String SEND_ADDRESS = "clientVerticle";
+    private final static String RECEIVE_ADDRESS = "serverVerticle";
+    private final static ObjectMapper MAPPER = new ObjectMapper();
 
     @Override
     public void start(Promise<Void> promise) {
@@ -40,18 +48,15 @@ public class HttpServerVerticle extends AbstractVerticle {
 
     private void handleUrlTesterRoute(RoutingContext context) {
         RequestParamsModel parameters = this.buildRequestModel(context.queryParams());
-        vertx.deployVerticle(new HttpClientVerticle(parameters), new DeploymentOptions().setInstances(parameters.getRequests()));
-
-//        this.client.get(parameters.getUrl(), "").send(request -> {
-//            if (request.succeeded()) {
-//                HttpResponse<Buffer> response = request.result();
-//                if (response.statusCode() == 200) {
-//                    context.response().end("status code: 200, content length: " + response.bodyAsString().length() + ", timeout: none, time took: ");
-//                } else {
-//                    context.response().end("status code: none, content length:  none, timeout: yes, time took: " + parameters.getTimeout());
-//                }
-//            }
-//        });
+        try {
+            String serializedParameters = MAPPER.writeValueAsString(parameters);
+            final EventBus eventBus = vertx.eventBus();
+            MessageConsumer<String> responses = eventBus.send(SEND_ADDRESS, serializedParameters).consumer(RECEIVE_ADDRESS);
+            vertx.deployVerticle(HttpClientVerticle.class.getName(), new DeploymentOptions().setInstances(parameters.getRequests()));
+            responses.handler(response -> context.response().end(response.body()));
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
     }
 
     private void validationFailuresHandler(RoutingContext context) {
@@ -60,7 +65,7 @@ public class HttpServerVerticle extends AbstractVerticle {
             context.response()
                     .setStatusCode(400)
                     .end(String.format("the parameter: %s failed in validation because of %s", ((ValidationException) failure).parameterName(), failure.getMessage()));
-            System.out.println("hello");
+            System.out.println("ValidationException");
         } else {
             // TODO set to handle exceptions from the handlers functions
         }
@@ -68,7 +73,7 @@ public class HttpServerVerticle extends AbstractVerticle {
 
     private void resourceNotFoundHandler(RoutingContext context) {
         context.response().setStatusCode(400).end("resource not found, bad request");
-        System.out.println("hello");
+        System.out.println("resource not found, bad request");
     }
 
     @Override

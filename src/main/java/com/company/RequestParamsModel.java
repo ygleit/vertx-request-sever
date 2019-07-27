@@ -1,16 +1,20 @@
 package com.company;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.*;
 
 @Getter
+@Setter
 @AllArgsConstructor
+@NoArgsConstructor
 @Builder
 public class RequestParamsModel {
 
-    private final String url;
-    private final int timeout;
-    private final int requests;
+    @JsonProperty("url")
+    private String url;
+    @JsonProperty("timeout")
+    private int timeout;
+    @JsonProperty("requests")
+    private int requests;
 
 }
